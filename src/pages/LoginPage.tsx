@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Package, Lock, User, Eye, EyeOff, Globe, ArrowRight } from 'lucide-react';
 import { Navbar } from '../components/layout/Navbar';
 import { login } from '../lib/auth';
 import { settingsStorage } from '../lib/storage';
-import type { AuthSession } from '../types';
+import type { AppSettings, AuthSession } from '../types';
 
 interface LoginPageProps {
   onLogin: (session: AuthSession) => void;
@@ -18,7 +18,20 @@ export function LoginPage({ onLogin, onPublicSearch, onHome }: LoginPageProps) {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const settings = settingsStorage.get();
+  const [settings, setSettings] = useState<AppSettings>({
+    officeName: 'Cpex Hoarafushi',
+    islandName: 'Hoarafushi, Maldives',
+    contactNumber: '+960 300-0000',
+    emailAddress: 'info@islandpost.mv',
+    logoText: 'IslandPost',
+    darkMode: false,
+    autoBackup: true,
+    sessionTimeout: 60,
+  });
+
+  useEffect(() => {
+    settingsStorage.get().then(setSettings);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,7 +41,7 @@ export function LoginPage({ onLogin, onPublicSearch, onHome }: LoginPageProps) {
     // Small delay for UX
     await new Promise((r) => setTimeout(r, 300));
 
-    const result = login(username.trim(), password);
+    const result = await login(username.trim(), password);
     setIsLoading(false);
 
     if (result.success && result.session) {

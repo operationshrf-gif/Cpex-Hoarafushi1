@@ -45,17 +45,28 @@ export default function App() {
 
   // Initialize on mount
   useEffect(() => {
-    seedInitialData();
-    settingsStorage.get().then((settings) => {
-      setDarkMode(settings.darkMode);
-    });
+    let mounted = true;
 
-    // Check for existing session
-    const existing = getSession();
-    if (existing) {
-      setSession(existing);
-      setView('staff');
-    }
+    const initialize = async () => {
+      await seedInitialData();
+      const settings = await settingsStorage.get();
+      if (mounted) {
+        setDarkMode(settings.darkMode);
+      }
+
+      // Check for existing session
+      const existing = await getSession();
+      if (mounted && existing) {
+        setSession(existing);
+        setView('staff');
+      }
+    };
+
+    void initialize();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const addToast = useCallback(
@@ -78,7 +89,7 @@ export default function App() {
   };
 
   const handleLogout = () => {
-    logout(session);
+    void logout(session);
     setSession(null);
     setView('home');
   };
@@ -165,7 +176,7 @@ export default function App() {
       {/* Sidebar */}
       <Sidebar
         currentPage={currentPage}
-        onNavigate={(page) => { setCurrentPage(page); setPageKey((k) => k + 1); }}
+        onNavigate={handleNavigate}
         session={session}
         onLogout={handleLogout}
         isOpen={sidebarOpen}

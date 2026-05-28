@@ -12,11 +12,11 @@ function hashPassword(password: string): string {
   return btoa(password + '_islandpost_salt');
 }
 
-export function login(
+export async function login(
   username: string,
   password: string
-): { success: boolean; session?: AuthSession; error?: string } {
-  const user = userStorage.getByUsername(username);
+): Promise<{ success: boolean; session?: AuthSession; error?: string }> {
+  const user = await userStorage.getByUsername(username);
 
   if (!user) {
     return { success: false, error: 'Invalid username or password.' };
@@ -42,12 +42,12 @@ export function login(
     expiresAt: expires.toISOString(),
   };
 
-  sessionStorage2.set(session);
+  await sessionStorage2.set(session);
 
   // Update last login
-  userStorage.update(user.id, { lastLogin: now.toISOString() });
+  await userStorage.update(user.id, { lastLogin: now.toISOString() });
 
-  activityStorage.log({
+  await activityStorage.log({
     userId: user.id,
     username: user.username,
     action: 'LOGIN',
@@ -58,9 +58,9 @@ export function login(
   return { success: true, session };
 }
 
-export function logout(session: AuthSession | null): void {
+export async function logout(session: AuthSession | null): Promise<void> {
   if (session) {
-    activityStorage.log({
+    await activityStorage.log({
       userId: session.userId,
       username: session.username,
       action: 'LOGOUT',
@@ -68,10 +68,10 @@ export function logout(session: AuthSession | null): void {
       details: `User logged out`,
     });
   }
-  sessionStorage2.clear();
+  await sessionStorage2.clear();
 }
 
-export function getSession(): AuthSession | null {
+export async function getSession(): Promise<AuthSession | null> {
   return sessionStorage2.get();
 }
 
