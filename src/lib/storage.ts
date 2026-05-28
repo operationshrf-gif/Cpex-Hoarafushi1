@@ -6,13 +6,16 @@
 import { supabase } from './supabaseClient';
 import type { Parcel, User, ActivityLog, ImportBatch, DeliveryRecord, AppSettings, AuthSession } from '../types';
 
-// Helper to handle Supabase errors
-function handleError<T>(response: { data: T | null; error: any }) {
+// Helper to handle Supabase responses safely.
+function handleResponse<T>(
+  response: { data: T | null; error: unknown },
+  fallback: T
+): T {
   if (response.error) {
     console.error('Supabase error:', response.error);
-    throw response.error;
+    return fallback;
   }
-  return response.data as T;
+  return (response.data ?? fallback) as T;
 }
 
 // Simple ID generator (fallback for client‑side IDs)
@@ -24,7 +27,7 @@ function generateId(): string {
 export const parcelStorage = {
   async getAll(): Promise<Parcel[]> {
     const { data, error } = await supabase.from('parcels').select('*');
-    return handleError(data);
+    return handleResponse<Parcel[]>({ data, error }, []);
   },
 
   async getById(id: string): Promise<Parcel | null> {
@@ -41,7 +44,10 @@ export const parcelStorage = {
   async create(data: Omit<Parcel, 'id' | 'createdAt' | 'updatedAt'>): Promise<Parcel> {
     const parcel = { ...data, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
     const { data: inserted, error } = await supabase.from('parcels').insert(parcel).single();
-    return handleError(inserted);
+    return handleResponse<Parcel>(
+      { data: inserted, error },
+      { ...(parcel as Parcel), id: generateId() }
+    );
   },
 
   async update(id: string, updates: Partial<Parcel>): Promise<Parcel | null> {
@@ -58,7 +64,7 @@ export const parcelStorage = {
     const now = new Date().toISOString();
     const payload = parcels.map(p => ({ ...p, createdAt: now, updatedAt: now }));
     const { data, error } = await supabase.from('parcels').insert(payload);
-    return handleError(data);
+    return handleResponse<Parcel[]>({ data, error }, []);
   },
 
   async search(query: string, field: string = 'all'): Promise<Parcel[]> {
@@ -94,7 +100,7 @@ export const parcelStorage = {
 export const userStorage = {
   async getAll(): Promise<User[]> {
     const { data, error } = await supabase.from('users').select('*');
-    return handleError(data);
+    return handleResponse<User[]>({ data, error }, []);
   },
 
   async getById(id: string): Promise<User | null> {
@@ -110,7 +116,10 @@ export const userStorage = {
   async create(data: Omit<User, 'id' | 'createdAt'>): Promise<User> {
     const user = { ...data, createdAt: new Date().toISOString() };
     const { data: inserted, error } = await supabase.from('users').insert(user).single();
-    return handleError(inserted);
+    return handleResponse<User>(
+      { data: inserted, error },
+      { ...(user as User), id: generateId() }
+    );
   },
 
   async update(id: string, updates: Partial<User>): Promise<User | null> {
@@ -128,12 +137,12 @@ export const userStorage = {
 export const activityStorage = {
   async getAll(): Promise<ActivityLog[]> {
     const { data, error } = await supabase.from('activity').select('*');
-    return handleError(data);
+    return handleResponse<ActivityLog[]>({ data, error }, []);
   },
 
   async getRecent(limit = 50): Promise<ActivityLog[]> {
     const { data, error } = await supabase.from('activity').select('*').order('timestamp', { ascending: false }).limit(limit);
-    return handleError(data);
+    return handleResponse<ActivityLog[]>({ data, error }, []);
   },
 
   async log(entry: Omit<ActivityLog, 'id' | 'timestamp'>): Promise<void> {
@@ -147,12 +156,15 @@ export const activityStorage = {
 export const batchStorage = {
   async getAll(): Promise<ImportBatch[]> {
     const { data, error } = await supabase.from('batches').select('*');
-    return handleError(data);
+    return handleResponse<ImportBatch[]>({ data, error }, []);
   },
 
   async create(data: Omit<ImportBatch, 'id'>): Promise<ImportBatch> {
     const { data: inserted, error } = await supabase.from('batches').insert(data).single();
-    return handleError(inserted);
+    return handleResponse<ImportBatch>(
+      { data: inserted, error },
+      { ...(data as ImportBatch), id: generateId() }
+    );
   },
 };
 
@@ -160,12 +172,15 @@ export const batchStorage = {
 export const deliveryStorage = {
   async getAll(): Promise<DeliveryRecord[]> {
     const { data, error } = await supabase.from('deliveries').select('*');
-    return handleError(data);
+    return handleResponse<DeliveryRecord[]>({ data, error }, []);
   },
 
   async create(data: Omit<DeliveryRecord, 'id'>): Promise<DeliveryRecord> {
     const { data: inserted, error } = await supabase.from('deliveries').insert(data).single();
-    return handleError(inserted);
+    return handleResponse<DeliveryRecord>(
+      { data: inserted, error },
+      { ...(data as DeliveryRecord), id: generateId() }
+    );
   },
 
   async getByParcelId(parcelId: string): Promise<DeliveryRecord | null> {

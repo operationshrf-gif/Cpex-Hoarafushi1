@@ -46,8 +46,9 @@ export default function App() {
   // Initialize on mount
   useEffect(() => {
     seedInitialData();
-    const settings = settingsStorage.get();
-    setDarkMode(settings.darkMode);
+    settingsStorage.get().then((settings) => {
+      setDarkMode(settings.darkMode);
+    });
 
     // Check for existing session
     const existing = getSession();
