@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useUsers } from '../hooks/useAsyncStorage';
 import {
   Plus,
   Edit2,
@@ -20,7 +21,7 @@ interface UsersPageProps {
 }
 
 export function UsersPage({ session }: UsersPageProps) {
-  const [users, setUsers] = useState<User[]>(() => userStorage.getAll());
+  const { users, refresh } = useUsers();
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -40,9 +41,7 @@ export function UsersPage({ session }: UsersPageProps) {
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
 
-  const refresh = () => setUsers(userStorage.getAll());
-
-  const handleAddUser = (e: React.FormEvent) => {
+  const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
     if (!newUser.username.trim() || !newUser.fullName.trim()) {
@@ -58,21 +57,21 @@ export function UsersPage({ session }: UsersPageProps) {
       setFormError(result.error || 'Failed to create user.');
       return;
     }
-    refresh();
+    await refresh();
     setShowAddModal(false);
     setNewUser({ username: '', password: '', confirmPassword: '', fullName: '', role: 'staff' });
   };
 
-  const handleToggleActive = (user: User) => {
+  const handleToggleActive = async (user: User) => {
     if (user.id === session.userId) return;
-    userStorage.update(user.id, { isActive: !user.isActive });
-    refresh();
+    await userStorage.update(user.id, { isActive: !user.isActive });
+    await refresh();
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!selectedUser || selectedUser.id === session.userId) return;
-    userStorage.delete(selectedUser.id);
-    refresh();
+    await userStorage.delete(selectedUser.id);
+    await refresh();
     setShowDeleteModal(false);
   };
 
@@ -98,14 +97,14 @@ export function UsersPage({ session }: UsersPageProps) {
     }, 1500);
   };
 
-  const handleEditRole = (e: React.FormEvent) => {
+  const handleEditRole = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedUser) return;
-    userStorage.update(selectedUser.id, { 
+    await userStorage.update(selectedUser.id, {
       fullName: selectedUser.fullName,
-      role: selectedUser.role 
+      role: selectedUser.role,
     });
-    refresh();
+    await refresh();
     setShowEditModal(false);
   };
 

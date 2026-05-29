@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useParcels, useActivityRecent } from '../hooks/useAsyncStorage';
 import {
   Package,
   CheckCircle,
@@ -22,7 +23,6 @@ import {
   Legend,
 } from 'recharts';
 import { format, subDays, parseISO } from 'date-fns';
-import { parcelStorage, activityStorage } from '../lib/storage';
 import { StatusBadge } from '../components/ui/Badge';
 import type { AuthSession } from '../types';
 
@@ -34,8 +34,8 @@ interface DashboardProps {
 const COLORS = ['#14b8a6', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6'];
 
 export function Dashboard({ session, onNavigate }: DashboardProps) {
-  const parcels = parcelStorage.getAll();
-  const activity = activityStorage.getRecent(20);
+  const { parcels, loading: parcelsLoading } = useParcels();
+  const { activity, loading: activityLoading } = useActivityRecent(20);
 
   const stats = useMemo(() => {
     const today = new Date().toISOString().split('T')[0];
@@ -107,6 +107,14 @@ export function Dashboard({ session, onNavigate }: DashboardProps) {
       </div>
     </div>
   );
+
+  if (parcelsLoading) {
+    return (
+      <div className="p-8 flex items-center justify-center min-h-[40vh]">
+        <div className="w-8 h-8 border-2 border-teal-500/30 border-t-teal-600 rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 sm:p-6 space-y-6">
@@ -272,7 +280,9 @@ export function Dashboard({ session, onNavigate }: DashboardProps) {
             <h3 className="text-sm font-semibold text-gray-700">Recent Activity</h3>
           </div>
           <div className="divide-y divide-gray-50 max-h-72 overflow-y-auto">
-            {activity.length === 0 ? (
+            {activityLoading ? (
+              <div className="p-6 text-center text-sm text-gray-400">Loading activity...</div>
+            ) : activity.length === 0 ? (
               <div className="p-6 text-center text-sm text-gray-400">No activity yet</div>
             ) : (
               activity.slice(0, 8).map((log) => (

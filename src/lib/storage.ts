@@ -578,8 +578,12 @@ export const sessionStorage2 = {
 export async function syncLocalCacheToSupabase(): Promise<void> {
   if (!isSupabaseConfigured) return;
 
-  const remoteUsers = await supabase.from('users').select('id', { count: 'exact', head: true });
-  if (remoteUsers.error || (remoteUsers.count ?? 0) > 0) return;
+  try {
+    const remoteUsers = await supabase.from('users').select('id', { count: 'exact', head: true });
+    if (remoteUsers.error || (remoteUsers.count ?? 0) > 0) return;
+  } catch {
+    return;
+  }
 
   const localUsers = lsRead<User[]>(LS.users, []);
   const localParcels = lsRead<Parcel[]>(LS.parcels, []);
@@ -587,14 +591,18 @@ export async function syncLocalCacheToSupabase(): Promise<void> {
 
   if (localUsers.length === 0 && localParcels.length === 0) return;
 
-  if (localUsers.length > 0) {
-    await supabase.from('users').upsert(localUsers.map(userToRow));
-  }
-  if (localParcels.length > 0) {
-    await supabase.from('parcels').upsert(localParcels.map(parcelToRow));
-  }
-  if (localActivity.length > 0) {
-    await supabase.from('activity').upsert(localActivity.map(activityToRow));
+  try {
+    if (localUsers.length > 0) {
+      await supabase.from('users').upsert(localUsers.map(userToRow));
+    }
+    if (localParcels.length > 0) {
+      await supabase.from('parcels').upsert(localParcels.map(parcelToRow));
+    }
+    if (localActivity.length > 0) {
+      await supabase.from('activity').upsert(localActivity.map(activityToRow));
+    }
+  } catch (err) {
+    logSupabaseError('syncLocalCacheToSupabase', err);
   }
 }
 

@@ -1,4 +1,5 @@
 import { useState, useMemo, type FormEvent } from 'react';
+import { useParcels } from '../hooks/useAsyncStorage';
 import {
   Package,
   Search,
@@ -243,7 +244,7 @@ export function ParcelsPage({ session }: ParcelsPageProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 15;
 
-  const allParcels = parcelStorage.getAll();
+  const { parcels: allParcels, refresh } = useParcels();
 
   const filtered = useMemo(() => {
     let list = allParcels;
@@ -268,7 +269,7 @@ export function ParcelsPage({ session }: ParcelsPageProps) {
   const paginated = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   const totalPages = Math.ceil(filtered.length / pageSize);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
 
@@ -282,44 +283,47 @@ export function ParcelsPage({ session }: ParcelsPageProps) {
     }
 
     if (showAddModal) {
-      const exists = parcelStorage.getByTracking(formData.trackingNumber);
+      const exists = await parcelStorage.getByTracking(formData.trackingNumber);
       if (exists) {
         setFormError('A parcel with this tracking number already exists.');
         return;
       }
-      const parcel = parcelStorage.create(formData);
-      activityStorage.log({
+      const parcel = await parcelStorage.create(formData);
+      await activityStorage.log({
         userId: session.userId,
         username: session.username,
         action: 'CREATE_PARCEL',
         target: parcel.id,
         details: `Created parcel ${parcel.trackingNumber} for ${parcel.customerName}`,
       });
+      await refresh();
       setShowAddModal(false);
       setFormData(INITIAL_FORM);
     } else if (showEditModal && selectedParcel) {
-      parcelStorage.update(selectedParcel.id, formData);
-      activityStorage.log({
+      await parcelStorage.update(selectedParcel.id, formData);
+      await activityStorage.log({
         userId: session.userId,
         username: session.username,
         action: 'UPDATE_PARCEL',
         target: selectedParcel.id,
         details: `Updated parcel ${selectedParcel.trackingNumber}`,
       });
+      await refresh();
       setShowEditModal(false);
     }
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!selectedParcel) return;
-    parcelStorage.delete(selectedParcel.id);
-    activityStorage.log({
+    await parcelStorage.delete(selectedParcel.id);
+    await activityStorage.log({
       userId: session.userId,
       username: session.username,
       action: 'DELETE_PARCEL',
       target: selectedParcel.id,
       details: `Deleted parcel ${selectedParcel.trackingNumber}`,
     });
+    await refresh();
     setShowDeleteModal(false);
     setSelectedParcel(null);
   };

@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useParcels } from '../hooks/useAsyncStorage';
 import {
   Search,
   CheckSquare,
@@ -29,7 +30,7 @@ export function HandoverPage({ session }: HandoverPageProps) {
   const [formError, setFormError] = useState('');
   const [filter, setFilter] = useState<'pending' | 'all'>('pending');
 
-  const allParcels = parcelStorage.getAll();
+  const { parcels: allParcels, refresh } = useParcels();
 
   const filtered = useMemo(() => {
     let list = allParcels;
@@ -73,7 +74,7 @@ export function HandoverPage({ session }: HandoverPageProps) {
     setShowHandoverModal(true);
   };
 
-  const handleConfirmDelivery = () => {
+  const handleConfirmDelivery = async () => {
     if (!selectedParcel) return;
     if (!receiverName.trim()) {
       setFormError('Receiver name is required.');
@@ -82,7 +83,7 @@ export function HandoverPage({ session }: HandoverPageProps) {
 
     const now = new Date().toISOString();
 
-    parcelStorage.update(selectedParcel.id, {
+    await parcelStorage.update(selectedParcel.id, {
       status: 'Delivered',
       deliveredAt: now,
       deliveredBy: session.fullName,
@@ -92,7 +93,7 @@ export function HandoverPage({ session }: HandoverPageProps) {
         : selectedParcel.remarks,
     });
 
-    deliveryStorage.create({
+    await deliveryStorage.create({
       parcelId: selectedParcel.id,
       trackingNumber: selectedParcel.trackingNumber,
       customerName: selectedParcel.customerName,
@@ -102,7 +103,7 @@ export function HandoverPage({ session }: HandoverPageProps) {
       staffNotes: staffNotes,
     });
 
-    activityStorage.log({
+    await activityStorage.log({
       userId: session.userId,
       username: session.username,
       action: 'DELIVER_PARCEL',
@@ -110,6 +111,7 @@ export function HandoverPage({ session }: HandoverPageProps) {
       details: `Marked parcel ${selectedParcel.trackingNumber} as delivered to ${receiverName}`,
     });
 
+    await refresh();
     setShowHandoverModal(false);
     setSuccessMessage(
       `✅ Parcel ${selectedParcel.trackingNumber} marked as delivered to ${receiverName}`

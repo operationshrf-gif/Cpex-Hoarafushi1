@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Activity, Search, Filter } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
-import { activityStorage } from '../lib/storage';
+import { useActivityAll } from '../hooks/useAsyncStorage';
 
 const ACTION_COLORS: Record<string, string> = {
   LOGIN: 'bg-green-100 text-green-700',
@@ -20,8 +20,13 @@ export function ActivityPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 25;
 
-  const allLogs = activityStorage.getAll().sort(
-    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+  const { logs: allLogsRaw, loading } = useActivityAll();
+  const allLogs = useMemo(
+    () =>
+      [...allLogsRaw].sort(
+        (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      ),
+    [allLogsRaw]
   );
 
   const uniqueActions = [...new Set(allLogs.map((l) => l.action))];

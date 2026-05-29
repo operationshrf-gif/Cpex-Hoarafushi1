@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Search,
   Package,
@@ -43,23 +43,37 @@ export function SearchPage({ session, onNavigate }: SearchPageProps) {
   const [showFilters, setShowFilters] = useState(false);
   const [selectedParcel, setSelectedParcel] = useState<Parcel | null>(null);
   const [showViewModal, setShowViewModal] = useState(false);
+  const [results, setResults] = useState<Parcel[]>([]);
+  const [searching, setSearching] = useState(false);
 
-  const results = useMemo(() => {
-    let list = parcelStorage.search(query, searchField);
-
-    if (statusFilter !== 'all') {
-      list = list.filter((p) => p.status === statusFilter);
-    }
-    if (dateFrom) {
-      list = list.filter((p) => p.arrivalDate >= dateFrom);
-    }
-    if (dateTo) {
-      list = list.filter((p) => p.arrivalDate <= dateTo);
-    }
-
-    return list.sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
+  useEffect(() => {
+    let cancelled = false;
+    setSearching(true);
+    parcelStorage
+      .search(query, searchField)
+      .then((list) => {
+        if (statusFilter !== 'all') {
+          list = list.filter((p) => p.status === statusFilter);
+        }
+        if (dateFrom) {
+          list = list.filter((p) => p.arrivalDate >= dateFrom);
+        }
+        if (dateTo) {
+          list = list.filter((p) => p.arrivalDate <= dateTo);
+        }
+        return list.sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+      })
+      .then((sorted) => {
+        if (!cancelled) setResults(sorted);
+      })
+      .finally(() => {
+        if (!cancelled) setSearching(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [query, searchField, statusFilter, dateFrom, dateTo]);
 
   const handleClear = () => {
@@ -188,9 +202,11 @@ export function SearchPage({ session, onNavigate }: SearchPageProps) {
       {/* Results */}
       <div className="flex items-center gap-2 text-sm text-gray-600">
         <Search className="w-4 h-4 text-gray-400" />
-        {query || hasActiveFilters
-          ? `${results.length} result${results.length !== 1 ? 's' : ''} found`
-          : `${results.length} total parcels`}
+        {searching
+          ? 'Searching...'
+          : query || hasActiveFilters
+            ? `${results.length} result${results.length !== 1 ? 's' : ''} found`
+            : `${results.length} total parcels`}
       </div>
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">

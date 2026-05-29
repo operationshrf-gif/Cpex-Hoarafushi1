@@ -48,17 +48,26 @@ export default function App() {
     let mounted = true;
 
     const initialize = async () => {
-      await seedInitialData();
-      const settings = await settingsStorage.get();
-      if (mounted) {
-        setDarkMode(settings.darkMode);
-      }
+      try {
+        await seedInitialData();
+        const settings = await settingsStorage.get();
+        if (mounted) {
+          setDarkMode(settings.darkMode);
+        }
 
-      // Check for existing session
-      const existing = await getSession();
-      if (mounted && existing) {
-        setSession(existing);
-        setView('staff');
+        const existing = await getSession();
+        if (
+          mounted &&
+          existing &&
+          typeof existing.userId === 'string' &&
+          typeof existing.role === 'string' &&
+          typeof existing.fullName === 'string'
+        ) {
+          setSession(existing);
+          setView('staff');
+        }
+      } catch (err) {
+        console.error('App initialization failed:', err);
       }
     };
 

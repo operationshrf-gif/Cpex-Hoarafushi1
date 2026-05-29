@@ -46,9 +46,8 @@ export function ImportPage({ session }: ImportPageProps) {
     setParseError('');
     setParseStats({ total: 0, valid: 0, errors: 0, duplicates: 0 });
 
-    const existing = new Set(
-      parcelStorage.getAll().map((p) => p.trackingNumber.toLowerCase())
-    );
+    const allParcels = await parcelStorage.getAll();
+    const existing = new Set(allParcels.map((p) => p.trackingNumber.toLowerCase()));
 
     try {
       const result = await parseExcelFile(f, existing);
@@ -105,10 +104,10 @@ export function ImportPage({ session }: ImportPageProps) {
       }));
 
       try {
-        const created = parcelStorage.bulkCreate(parcels);
+        const created = await parcelStorage.bulkCreate(parcels);
         successCount = created.length;
 
-        const batch = batchStorage.create({
+        const batch = await batchStorage.create({
           filename: file?.name || 'unknown',
           importedAt: new Date().toISOString(),
           importedBy: session.username,
@@ -118,10 +117,11 @@ export function ImportPage({ session }: ImportPageProps) {
           errors: [],
         });
 
-        // Update batch ID on all created parcels
-        created.forEach((p) => parcelStorage.update(p.id, { importBatchId: batch.id }));
+        await Promise.all(
+          created.map((p) => parcelStorage.update(p.id, { importBatchId: batch.id }))
+        );
 
-        activityStorage.log({
+        await activityStorage.log({
           userId: session.userId,
           username: session.username,
           action: 'IMPORT_PARCELS',

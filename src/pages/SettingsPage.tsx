@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Settings,
   Save,
@@ -33,21 +33,36 @@ function InputField({ label, value, onChange, placeholder }: InputFieldProps) {
   );
 }
 
+const DEFAULT_SETTINGS: AppSettings = {
+  officeName: 'Cpex Hoarafushi',
+  islandName: 'Hoarafushi, Maldives',
+  contactNumber: '+960 300-0000',
+  emailAddress: 'info@islandpost.mv',
+  logoText: 'IslandPost',
+  darkMode: false,
+  autoBackup: true,
+  sessionTimeout: 60,
+};
+
 export function SettingsPage() {
-  const [settings, setSettings] = useState<AppSettings>(() => settingsStorage.get());
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [saved, setSaved] = useState(false);
   const [restoreError, setRestoreError] = useState('');
   const [restoreSuccess, setRestoreSuccess] = useState('');
 
-  const handleSave = (e: React.FormEvent) => {
+  useEffect(() => {
+    settingsStorage.get().then(setSettings);
+  }, []);
+
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    settingsStorage.save(settings);
+    await settingsStorage.save(settings);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
 
-  const handleExportBackup = () => {
-    const json = backupRestore.exportAll();
+  const handleExportBackup = async () => {
+    const json = await backupRestore.exportAll();
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -61,9 +76,9 @@ export function SettingsPage() {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (ev) => {
+    reader.onload = async (ev) => {
       const json = ev.target?.result as string;
-      const result = backupRestore.importAll(json);
+      const result = await backupRestore.importAll(json);
       if (result.success) {
         setRestoreSuccess(result.message);
         setRestoreError('');
