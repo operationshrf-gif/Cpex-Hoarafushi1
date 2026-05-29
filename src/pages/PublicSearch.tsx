@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Search,
   Package,
@@ -14,7 +14,7 @@ import { format, parseISO } from 'date-fns';
 import { parcelStorage } from '../lib/storage';
 import { StatusBadge } from '../components/ui/Badge';
 import { settingsStorage } from '../lib/storage';
-import type { Parcel } from '../types';
+import type { AppSettings, Parcel } from '../types';
 
 interface PublicSearchProps {
   onGoToStaff: () => void;
@@ -38,18 +38,46 @@ export function PublicSearch({ onGoToStaff, onHome }: PublicSearchProps) {
   const [searchField, setSearchField] = useState<SearchField>('all');
   const [hasSearched, setHasSearched] = useState(false);
   const [selectedParcel, setSelectedParcel] = useState<Parcel | null>(null);
-
-  const settings = settingsStorage.get();
+  const [results, setResults] = useState<Parcel[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [settings, setSettings] = useState<AppSettings>({
+    officeName: 'Cpex Hoarafushi',
+    islandName: 'Hoarafushi, Maldives',
+    contactNumber: '+960 300-0000',
+    emailAddress: 'info@islandpost.mv',
+    logoText: 'IslandPost',
+    darkMode: false,
+    autoBackup: true,
+    sessionTimeout: 60,
+  });
   const publicOfficeName = 'Cpex Hoarafushi';
   const publicIslandName = 'Hoarafushi, Maldives';
 
-  const results = useMemo(() => {
-    if (!query.trim() || !hasSearched) return [];
-    // Only show non-delivered, non-returned parcels in public search
-    const all = parcelStorage.search(query, searchField).filter(
-      (p) => p.status !== 'Delivered' && p.status !== 'Returned'
-    );
-    return all;
+  useEffect(() => {
+    settingsStorage.get().then(setSettings);
+  }, []);
+
+  useEffect(() => {
+    if (!query.trim() || !hasSearched) {
+      setResults([]);
+      return;
+    }
+    let cancelled = false;
+    setSearching(true);
+    parcelStorage
+      .search(query, searchField)
+      .then((all) =>
+        all.filter((p) => p.status !== 'Delivered' && p.status !== 'Returned')
+      )
+      .then((filtered) => {
+        if (!cancelled) setResults(filtered);
+      })
+      .finally(() => {
+        if (!cancelled) setSearching(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [query, searchField, hasSearched]);
 
   const handleSearch = (e: React.FormEvent) => {
@@ -155,7 +183,12 @@ export function PublicSearch({ onGoToStaff, onHome }: PublicSearchProps) {
         {/* Results */}
         {hasSearched && (
           <div className="space-y-3">
-            {results.length === 0 ? (
+            {searching ? (
+              <div className="bg-white/10 backdrop-blur-sm rounded-2xl border border-white/20 p-10 text-center">
+                <div className="w-8 h-8 border-2 border-teal-400/30 border-t-teal-400 rounded-full animate-spin mx-auto mb-3" />
+                <p className="text-slate-400 text-sm">Searching parcels...</p>
+              </div>
+            ) : results.length === 0 ? (
               <div className="bg-white/10 backdrop-blur-sm rounded-2xl border border-white/20 p-10 text-center">
                 <Package className="w-12 h-12 mx-auto mb-3 text-slate-500" />
                 <h3 className="text-white font-semibold text-lg mb-1">No parcels found</h3>

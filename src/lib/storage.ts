@@ -1,24 +1,34 @@
 // ============================================================
-// IslandPost — Supabase Data Layer
-// All data is now stored in Supabase tables via the Supabase client.
+// IslandPost — Data Layer (localStorage + optional Supabase sync)
 // ============================================================
 
 import { supabase } from './supabaseClient';
 import type { Parcel, User, ActivityLog, ImportBatch, DeliveryRecord, AppSettings, AuthSession } from '../types';
 
-// Helper to handle Supabase responses safely.
-function handleResponse<T>(
-  response: { data: T | null; error: unknown },
-  fallback: T
-): T {
-  if (response.error) {
-    console.error('Supabase error:', response.error);
+const LS = {
+  users: 'islandpost_users',
+  parcels: 'islandpost_parcels',
+  activity: 'islandpost_activity',
+  settings: 'islandpost_settings',
+  session: 'islandpost_session',
+  batches: 'islandpost_batches',
+  deliveries: 'islandpost_deliveries',
+} as const;
+
+function lsRead<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
     return fallback;
   }
-  return (response.data ?? fallback) as T;
 }
 
-// Simple ID generator (fallback for client‑side IDs)
+function lsWrite<T>(key: string, value: T): void {
+  localStorage.setItem(key, JSON.stringify(value));
+}
+
+// Simple ID generator
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
@@ -26,45 +36,63 @@ function generateId(): string {
 // ─── Parcels ────────────────────────────────────────────────
 export const parcelStorage = {
   async getAll(): Promise<Parcel[]> {
+    const local = lsRead<Parcel[]>(LS.parcels, []);
     const { data, error } = await supabase.from('parcels').select('*');
-    return handleResponse<Parcel[]>({ data, error }, []);
+    if (!error && data && data.length > 0) {
+      lsWrite(LS.parcels, data as Parcel[]);
+      return data as Parcel[];
+    }
+    return local;
   },
 
   async getById(id: string): Promise<Parcel | null> {
-    const { data, error } = await supabase.from('parcels').select('*').eq('id', id).single();
-    return error ? null : (data as Parcel);
+    const all = await this.getAll();
+    return all.find((p) => p.id === id) ?? null;
   },
 
   async getByTracking(trackingNumber: string): Promise<Parcel | null> {
     const tn = trackingNumber.toLowerCase().trim();
-    const { data, error } = await supabase.from('parcels').select('*').ilike('trackingNumber', tn).single();
-    return error ? null : (data as Parcel);
+    const all = await this.getAll();
+    return all.find((p) => p.trackingNumber.toLowerCase() === tn) ?? null;
   },
 
   async create(data: Omit<Parcel, 'id' | 'createdAt' | 'updatedAt'>): Promise<Parcel> {
-    const parcel = { ...data, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-    const { data: inserted, error } = await supabase.from('parcels').insert(parcel).single();
-    return handleResponse<Parcel>(
-      { data: inserted, error },
-      { ...(parcel as Parcel), id: generateId() }
-    );
+    const now = new Date().toISOString();
+    const parcel: Parcel = { ...data, id: generateId(), createdAt: now, updatedAt: now };
+    const all = lsRead<Parcel[]>(LS.parcels, []);
+    all.push(parcel);
+    lsWrite(LS.parcels, all);
+    await supabase.from('parcels').insert(parcel);
+    return parcel;
   },
 
   async update(id: string, updates: Partial<Parcel>): Promise<Parcel | null> {
-    const { data, error } = await supabase.from('parcels').update({ ...updates, updatedAt: new Date().toISOString() }).eq('id', id).single();
-    return error ? null : (data as Parcel);
+    const all = lsRead<Parcel[]>(LS.parcels, []);
+    const idx = all.findIndex((p) => p.id === id);
+    if (idx === -1) return null;
+    all[idx] = { ...all[idx], ...updates, updatedAt: new Date().toISOString() };
+    lsWrite(LS.parcels, all);
+    await supabase.from('parcels').update({ ...updates, updatedAt: all[idx].updatedAt }).eq('id', id);
+    return all[idx];
   },
 
   async delete(id: string): Promise<boolean> {
-    const { error } = await supabase.from('parcels').delete().eq('id', id);
-    return !error;
+    const all = lsRead<Parcel[]>(LS.parcels, []);
+    const filtered = all.filter((p) => p.id !== id);
+    if (filtered.length === all.length) return false;
+    lsWrite(LS.parcels, filtered);
+    await supabase.from('parcels').delete().eq('id', id);
+    return true;
   },
 
   async bulkCreate(parcels: Omit<Parcel, 'id' | 'createdAt' | 'updatedAt'>[]): Promise<Parcel[]> {
     const now = new Date().toISOString();
-    const payload = parcels.map(p => ({ ...p, createdAt: now, updatedAt: now }));
-    const { data, error } = await supabase.from('parcels').insert(payload);
-    return handleResponse<Parcel[]>({ data, error }, []);
+    const created = parcels.map((p) => ({ ...p, id: generateId(), createdAt: now, updatedAt: now }));
+    const all = lsRead<Parcel[]>(LS.parcels, []);
+    all.push(...created);
+    lsWrite(LS.parcels, all);
+    await supabase.from('parcels').insert(created);
+    return created;
   },
 
   async search(query: string, field: string = 'all'): Promise<Parcel[]> {
@@ -99,56 +127,77 @@ export const parcelStorage = {
 // ─── Users ──────────────────────────────────────────────────
 export const userStorage = {
   async getAll(): Promise<User[]> {
+    const local = lsRead<User[]>(LS.users, []);
     const { data, error } = await supabase.from('users').select('*');
-    return handleResponse<User[]>({ data, error }, []);
+    if (!error && data && data.length > 0) {
+      lsWrite(LS.users, data as User[]);
+      return data as User[];
+    }
+    return local;
   },
 
   async getById(id: string): Promise<User | null> {
-    const { data, error } = await supabase.from('users').select('*').eq('id', id).single();
-    return error ? null : (data as User);
+    const all = await this.getAll();
+    return all.find((u) => u.id === id) ?? null;
   },
 
   async getByUsername(username: string): Promise<User | null> {
-    const { data, error } = await supabase.from('users').select('*').eq('username', username).single();
-    return error ? null : (data as User);
+    const all = await this.getAll();
+    return all.find((u) => u.username.toLowerCase() === username.toLowerCase()) ?? null;
   },
 
   async create(data: Omit<User, 'id' | 'createdAt'>): Promise<User> {
-    const user = { ...data, createdAt: new Date().toISOString() };
-    const { data: inserted, error } = await supabase.from('users').insert(user).single();
-    return handleResponse<User>(
-      { data: inserted, error },
-      { ...(user as User), id: generateId() }
-    );
+    const user: User = { ...data, id: generateId(), createdAt: new Date().toISOString() };
+    const all = lsRead<User[]>(LS.users, []);
+    all.push(user);
+    lsWrite(LS.users, all);
+    await supabase.from('users').insert(user);
+    return user;
   },
 
   async update(id: string, updates: Partial<User>): Promise<User | null> {
-    const { data, error } = await supabase.from('users').update(updates).eq('id', id).single();
-    return error ? null : (data as User);
+    const all = lsRead<User[]>(LS.users, []);
+    const idx = all.findIndex((u) => u.id === id);
+    if (idx === -1) return null;
+    all[idx] = { ...all[idx], ...updates };
+    lsWrite(LS.users, all);
+    await supabase.from('users').update(updates).eq('id', id);
+    return all[idx];
   },
 
   async delete(id: string): Promise<boolean> {
-    const { error } = await supabase.from('users').delete().eq('id', id);
-    return !error;
+    const all = lsRead<User[]>(LS.users, []);
+    const filtered = all.filter((u) => u.id !== id);
+    if (filtered.length === all.length) return false;
+    lsWrite(LS.users, filtered);
+    await supabase.from('users').delete().eq('id', id);
+    return true;
   },
 };
 
 // ─── Activity Log ───────────────────────────────────────────
 export const activityStorage = {
   async getAll(): Promise<ActivityLog[]> {
+    const local = lsRead<ActivityLog[]>(LS.activity, []);
     const { data, error } = await supabase.from('activity').select('*');
-    return handleResponse<ActivityLog[]>({ data, error }, []);
+    if (!error && data && data.length > 0) {
+      lsWrite(LS.activity, data as ActivityLog[]);
+      return data as ActivityLog[];
+    }
+    return local;
   },
 
   async getRecent(limit = 50): Promise<ActivityLog[]> {
-    const { data, error } = await supabase.from('activity').select('*').order('timestamp', { ascending: false }).limit(limit);
-    return handleResponse<ActivityLog[]>({ data, error }, []);
+    const all = await this.getAll();
+    return all.sort((a, b) => b.timestamp.localeCompare(a.timestamp)).slice(0, limit);
   },
 
   async log(entry: Omit<ActivityLog, 'id' | 'timestamp'>): Promise<void> {
-    const log = { ...entry, timestamp: new Date().toISOString() };
-    const { error } = await supabase.from('activity').insert(log);
-    if (error) console.error('Activity log error:', error);
+    const logEntry: ActivityLog = { ...entry, id: generateId(), timestamp: new Date().toISOString() };
+    const all = lsRead<ActivityLog[]>(LS.activity, []);
+    all.unshift(logEntry);
+    lsWrite(LS.activity, all);
+    await supabase.from('activity').insert(logEntry);
   },
 };
 
@@ -203,13 +252,18 @@ const DEFAULT_SETTINGS: AppSettings = {
 
 export const settingsStorage = {
   async get(): Promise<AppSettings> {
+    const local = lsRead<AppSettings | null>(LS.settings, null);
     const { data, error } = await supabase.from('settings').select('*').single();
-    if (error || !data) return DEFAULT_SETTINGS;
-    return { ...DEFAULT_SETTINGS, ...(data as AppSettings) };
+    if (!error && data) {
+      const merged = { ...DEFAULT_SETTINGS, ...(data as AppSettings) };
+      lsWrite(LS.settings, merged);
+      return merged;
+    }
+    return local ? { ...DEFAULT_SETTINGS, ...local } : DEFAULT_SETTINGS;
   },
 
   async save(settings: AppSettings): Promise<void> {
-    // Upsert a single row (id = 1)
+    lsWrite(LS.settings, settings);
     await supabase.from('settings').upsert({ id: 1, ...settings });
   },
 
@@ -224,12 +278,8 @@ export const settingsStorage = {
 // ─── Session Management ─────────────────────────────────────
 export const sessionStorage2 = {
   async get(): Promise<AuthSession | null> {
-    const { data, error } = await supabase.auth.getSession();
-    if (error) return null;
-    const session = data.session;
-    if (!session) return null;
-    // Cast to our AuthSession shape (adjust fields as needed)
-    const sess = session as unknown as AuthSession;
+    const sess = lsRead<AuthSession | null>(LS.session, null);
+    if (!sess) return null;
     if (new Date(sess.expiresAt) < new Date()) {
       await this.clear();
       return null;
@@ -237,13 +287,12 @@ export const sessionStorage2 = {
     return sess;
   },
 
-  async set(_: AuthSession): Promise<void> {
-    // Supabase automatically manages session after signIn; placeholder
-    return;
+  async set(session: AuthSession): Promise<void> {
+    lsWrite(LS.session, session);
   },
 
   async clear(): Promise<void> {
-    await supabase.auth.signOut();
+    localStorage.removeItem(LS.session);
   },
 };
 
