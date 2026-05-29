@@ -1,9 +1,9 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
-const hasSupabaseEnv = Boolean(supabaseUrl && supabaseAnonKey);
+export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 
 const fallbackSupabase = {
   from() {
@@ -27,10 +27,10 @@ const fallbackSupabase = {
   },
 };
 
-if (!hasSupabaseEnv) {
-  console.warn('Supabase env vars are missing. Running in offline fallback mode.');
+if (!isSupabaseConfigured) {
+  console.warn('Supabase env vars missing — using browser storage fallback.');
 }
 
-export const supabase = hasSupabaseEnv
-  ? createClient(supabaseUrl, supabaseAnonKey)
-  : (fallbackSupabase as unknown as ReturnType<typeof createClient>);
+export const supabase: SupabaseClient = isSupabaseConfigured
+  ? createClient(supabaseUrl!, supabaseAnonKey!)
+  : (fallbackSupabase as unknown as SupabaseClient);
